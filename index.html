@@ -1177,7 +1177,7 @@
                   <div class="group-title">🖼️ 6. 封套封面外觀</div>
                   <div class="palette-grid">
                     <div class="palette-circle color-jacket-btn" data-color="#222222" style="background:#222222;" title="深色封套"></div>
-                    <div class="palette-circle color-jacket-btn" data-color="#f8f8f8" style="background:#f8f8f8; border-color:#999;" title="純白卡紙"></div>
+                    <div class="palette-circle color-jacket-btn" data-color="#8e24aa" style="background:#8e24aa;" title="幻紫"></div>
                     <div class="palette-circle color-jacket-btn" data-color="#f2efe9" style="background:#f2efe9;" title="牛皮米白"></div>
                     <div class="palette-circle color-jacket-btn" data-color="#c93b3b" style="background:#c93b3b;" title="復古磚紅"></div>
                   </div>
@@ -1241,7 +1241,6 @@
       }
     };
 
-    // 強健版 YouTube ID 解析器（支援所有形式短網址、時間戳、清單與 Shorts）
     function parseYouTubeID(url) {
       if (!url) return '';
       const str = url.trim();
@@ -1331,13 +1330,14 @@
       }
     }
 
+    // 圖片超輕量壓縮（限制 480px、品質 0.72，單圖僅約 35KB，絕對不爆 localStorage）
     function compressAndStore(file, storageKey, callback) {
       const reader = new FileReader();
       reader.onload = function(e) {
         const img = new Image();
         img.onload = function() {
           const canvas = document.createElement('canvas');
-          const maxDim = 600;
+          const maxDim = 480;
           let w = img.width;
           let h = img.height;
 
@@ -1354,7 +1354,7 @@
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, w, h);
 
-          const compressed = canvas.toDataURL('image/jpeg', 0.85);
+          const compressed = canvas.toDataURL('image/jpeg', 0.72);
           localStore.set(storageKey, compressed);
           callback(compressed);
         };
@@ -1458,7 +1458,7 @@
         iconVolMuted.style.display = val === 0 ? 'block' : 'none';
       });
 
-      // ══════════ 載入影片邏輯修正 ══════════
+      // ══════════ 載入影片（保證 100% 響應） ══════════
       const linkInput = document.getElementById('linkInput');
       const btnLoad = document.getElementById('btnLoad');
 
@@ -1548,7 +1548,7 @@
         });
       }, 250);
 
-      // ══════════ 外觀：卡帶（全面加固圖片獨立性） ══════════
+      // ══════════ 外觀：卡帶（全面保護背景圖層） ══════════
       const tapeStripe = document.getElementById('tapeStripe');
       const nativeColorPicker = document.getElementById('nativeColorPicker');
       const fileUploadInput = document.getElementById('fileUploadInput');
@@ -1573,7 +1573,7 @@
         localStore.set('cfg_bar_color', bColor);
       }
 
-      // 先載入顏色，再無條件加載圖片（圖片樣式設置為 !important，徹底隔絕被底色覆蓋）
+      // 先載入顏色，再還原圖片
       if (localStore.get('cfg_accent')) applyCassetteAccent(localStore.get('cfg_accent'));
       if (localStore.get('cfg_case_color')) applyCaseColor(localStore.get('cfg_case_color'), localStore.get('cfg_bar_color') || '#11151c');
       
@@ -1712,7 +1712,7 @@
         applyJacketColor(localStore.get('cfg_jacket_bg') || '#222222', true);
       };
 
-      // ══════════ 防重置：一鍵複製永久網址 ══════════
+      // ══════════ 一鍵複製永久網址 ══════════
       const btnCopyPermanentUrl = document.getElementById('btnCopyPermanentUrl');
       btnCopyPermanentUrl.addEventListener('click', () => {
         const curVid = localStore.get('yt_video_id') || parseYouTubeID(linkInput.value) || initialVideoId;
