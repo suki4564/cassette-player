@@ -1155,9 +1155,12 @@
                   <div class="palette-grid">
                     <div class="palette-circle color-label-btn" data-color="#ffffff" style="background:#ffffff; border-color:#999;" title="純白"></div>
                     <div class="palette-circle color-label-btn" data-color="#e51d24" style="background:#e51d24;" title="經典紅"></div>
-                     <div class="palette-circle color-label-btn" data-color="#e67e22" style="background:#e67e22;" title="復古橘"></div>
+                    <div class="palette-circle color-label-btn" data-color="#e67e22" style="background:#e67e22;" title="復古橘"></div>
                     <div class="palette-circle color-label-btn" data-color="#fbc02d" style="background:#fbc02d;" title="唱片黃"></div>
+                    <div class="palette-circle color-theme-btn" data-color="#2e7d32" style="background:#2e7d32;" title="翠綠"></div>
                     <div class="palette-circle color-label-btn" data-color="#1976d2" style="background:#1976d2;" title="黑膠藍"></div>
+                    <div class="palette-circle color-theme-btn" data-color="#8e24aa" style="background:#8e24aa;" title="幻紫"></div>
+                    <div class="palette-circle color-theme-btn" data-color="#111111" style="background:#111111;" title="墨黑"></div>
                   </div>
                   <div class="custom-color-picker-wrap">
                     <input type="color" id="labelColorPicker" class="native-color-picker" value="#e67e22">
@@ -1238,11 +1241,12 @@
       }
     };
 
+    // 強健版 YouTube ID 解析器（支援所有形式短網址、時間戳、清單與 Shorts）
     function parseYouTubeID(url) {
       if (!url) return '';
       const str = url.trim();
       if (/^[a-zA-Z0-9_-]{11}$/.test(str)) return str;
-      const match = str.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/|live\/))([\w-]{11})/);
+      const match = str.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/|live\/))([a-zA-Z0-9_-]{11})/);
       return match ? match[1] : '';
     }
 
@@ -1253,7 +1257,6 @@
       return (0.2126 * ((rgb >> 16) & 0xff) + 0.7152 * ((rgb >> 8) & 0xff) + 0.0722 * (rgb & 0xff)) > 160;
     }
 
-    // 優先讀取 URL 上的參數
     const urlVideo = params.get('v');
     const urlStyle = params.get('style');
     const initialVideoId = urlVideo || localStore.get('yt_video_id') || '5qap5aO4i9A';
@@ -1328,7 +1331,6 @@
       }
     }
 
-    // 圖片壓縮輔助函式（等比限制 600px，大小僅 50~70KB，徹底防止 localStorage 爆滿與重置）
     function compressAndStore(file, storageKey, callback) {
       const reader = new FileReader();
       reader.onload = function(e) {
@@ -1362,7 +1364,6 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
-      // ══════════ Side B 款式切換 ══════════
       const optCassette = document.getElementById('optCassette');
       const optVinyl = document.getElementById('optVinyl');
       const cassetteModel = document.getElementById('cassetteModel');
@@ -1398,12 +1399,10 @@
       optVinyl.addEventListener('click', () => setStyle('vinyl'));
       setStyle(currentStyle);
 
-      // 翻轉控制
       const flipper = document.getElementById('flipper');
       document.getElementById('btnFlipB').addEventListener('click', () => flipper.classList.add('flipped'));
       document.getElementById('btnFlipA').addEventListener('click', () => flipper.classList.remove('flipped'));
 
-      // 播放/暫停/跳曲
       const btnPlay = document.getElementById('btnPlay');
       btnPlay.addEventListener('click', () => {
         if (!isReady || !ytPlayer) return;
@@ -1425,7 +1424,6 @@
         }
       });
 
-      // 音量控制
       const volSlider = document.getElementById('volSlider');
       const btnMute = document.getElementById('btnMute');
       const iconVolHigh = document.getElementById('iconVolHigh');
@@ -1460,7 +1458,7 @@
         iconVolMuted.style.display = val === 0 ? 'block' : 'none';
       });
 
-      // ══════════ 重置讀取鍵（載入按鈕）邏輯全面修復 ══════════
+      // ══════════ 載入影片邏輯修正 ══════════
       const linkInput = document.getElementById('linkInput');
       const btnLoad = document.getElementById('btnLoad');
 
@@ -1468,14 +1466,15 @@
         const raw = linkInput.value.trim();
         const vid = parseYouTubeID(raw);
         if (!vid) {
-          alert('請貼上有效的 YouTube 網址或影片 ID！');
+          alert('請貼上有效的 YouTube 網址或 11 碼影片 ID！');
           return;
         }
 
         localStore.set('yt_url', raw);
         localStore.set('yt_video_id', vid);
 
-        // 如果播放器已準備好，直接載入並播放
+        btnLoad.textContent = '載入中...';
+        
         if (isReady && ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
           try {
             ytPlayer.loadVideoById(vid);
@@ -1483,14 +1482,10 @@
           } catch(e) {
             ytPlayer.cueVideoById(vid);
           }
-        } else if (ytPlayer) {
-          // 容錯備援
-          try {
-            ytPlayer.cueVideoById(vid);
-          } catch(e) {}
+        } else if (ytPlayer && typeof ytPlayer.cueVideoById === 'function') {
+          ytPlayer.cueVideoById(vid);
         }
 
-        btnLoad.textContent = '載入中...';
         setTimeout(() => {
           refreshTitle();
           btnLoad.textContent = '載入';
@@ -1508,7 +1503,6 @@
       if (urlVideo) linkInput.value = `https://youtu.be/${urlVideo}`;
       else if (localStore.get('yt_url')) linkInput.value = localStore.get('yt_url');
 
-      // 循環播放
       const loopToggle = document.getElementById('loopToggle');
       loopToggle.checked = isLooping;
       loopToggle.addEventListener('change', () => {
@@ -1516,7 +1510,6 @@
         localStore.set('yt_loop', isLooping);
       });
 
-      // 進度條跳轉
       document.getElementById('tapeProgress').addEventListener('click', (e) => {
         if (!isReady || !ytPlayer) return;
         const rect = e.currentTarget.getBoundingClientRect();
@@ -1555,7 +1548,7 @@
         });
       }, 250);
 
-      // ══════════ 外觀：卡帶（修復圖片被覆蓋問題） ══════════
+      // ══════════ 外觀：卡帶（全面加固圖片獨立性） ══════════
       const tapeStripe = document.getElementById('tapeStripe');
       const nativeColorPicker = document.getElementById('nativeColorPicker');
       const fileUploadInput = document.getElementById('fileUploadInput');
@@ -1567,7 +1560,7 @@
         if (nativeColorPicker) nativeColorPicker.value = color.startsWith('#') && color.length === 7 ? color : '#e51d24';
 
         if (clearImg) {
-          tapeStripe.style.backgroundImage = 'none';
+          tapeStripe.style.setProperty('background-image', 'none', 'important');
           localStore.remove('cfg_tape_img');
           fileUploadInput.value = '';
         }
@@ -1580,13 +1573,13 @@
         localStore.set('cfg_bar_color', bColor);
       }
 
-      // 初始化順序：先還原顏色，最後強制還原圖片（確保圖片在最上層，不被純色蓋掉）
+      // 先載入顏色，再無條件加載圖片（圖片樣式設置為 !important，徹底隔絕被底色覆蓋）
       if (localStore.get('cfg_accent')) applyCassetteAccent(localStore.get('cfg_accent'));
       if (localStore.get('cfg_case_color')) applyCaseColor(localStore.get('cfg_case_color'), localStore.get('cfg_bar_color') || '#11151c');
       
       const savedTapeImg = localStore.get('cfg_tape_img');
       if (savedTapeImg) {
-        tapeStripe.style.backgroundImage = `url("${savedTapeImg}")`;
+        tapeStripe.style.setProperty('background-image', `url("${savedTapeImg}")`, 'important');
       }
 
       document.querySelectorAll('.color-accent-btn').forEach(btn => {
@@ -1599,11 +1592,11 @@
       });
       document.getElementById('caseColorPicker').oninput = function(e) { applyCaseColor(e.target.value, '#11151c'); };
 
-      // 卡帶圖片上傳（加入自動壓縮，避免 localStorage 爆滿消失）
+      // 卡帶圖片上傳
       fileUploadInput.onchange = function() {
         if (this.files && this.files[0]) {
           compressAndStore(this.files[0], 'cfg_tape_img', (dataUrl) => {
-            tapeStripe.style.backgroundImage = `url("${dataUrl}")`;
+            tapeStripe.style.setProperty('background-image', `url("${dataUrl}")`, 'important');
           });
         }
       };
@@ -1683,7 +1676,6 @@
       });
       document.getElementById('jacketColorPicker').oninput = function(e) { applyJacketColor(e.target.value, true); };
 
-      // 黑膠盤面圖片壓縮上傳
       document.getElementById('fileDiscBodyInput').onchange = function() {
         if (this.files && this.files[0]) {
           compressAndStore(this.files[0], 'cfg_disc_body_img', (dataUrl) => {
@@ -1696,7 +1688,6 @@
         applyDiscBodyColor(localStore.get('cfg_disc_body_color') || '#121212', true);
       };
 
-      // 圓標圖片壓縮上傳
       document.getElementById('fileLabelInput').onchange = function() {
         if (this.files && this.files[0]) {
           compressAndStore(this.files[0], 'cfg_label_img', (dataUrl) => {
@@ -1709,7 +1700,6 @@
         applyDiscLabelColor(localStore.get('cfg_label_color') || '#e67e22', true);
       };
 
-      // 封面圖片壓縮上傳
       document.getElementById('fileJacketInput').onchange = function() {
         if (this.files && this.files[0]) {
           compressAndStore(this.files[0], 'cfg_jacket_img', (dataUrl) => {
