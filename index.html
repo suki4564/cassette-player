@@ -422,7 +422,7 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      margin-left: 55px; /* 平移以對齊 Play 鍵 */
+      margin-left: 55px;
     }
 
     .vinyl-stage {
@@ -1253,10 +1253,9 @@
       return (0.2126 * ((rgb >> 16) & 0xff) + 0.7152 * ((rgb >> 8) & 0xff) + 0.0722 * (rgb & 0xff)) > 160;
     }
 
-    // 優先讀取 URL 上的特定參數
+    // 優先讀取 URL 上的參數
     const urlVideo = params.get('v');
     const urlStyle = params.get('style');
-    const urlImg = params.get('img');
     const initialVideoId = urlVideo || localStore.get('yt_video_id') || '5qap5aO4i9A';
 
     let ytPlayer = null;
@@ -1329,7 +1328,7 @@
       }
     }
 
-    // 圖片微型壓縮工具函式（等比限制 600px，大小僅 50~70KB，徹底防止 localStorage 爆滿與重置）
+    // 圖片壓縮輔助函式（等比限制 600px，大小僅 50~70KB，徹底防止 localStorage 爆滿與重置）
     function compressAndStore(file, storageKey, callback) {
       const reader = new FileReader();
       reader.onload = function(e) {
@@ -1399,7 +1398,7 @@
       optVinyl.addEventListener('click', () => setStyle('vinyl'));
       setStyle(currentStyle);
 
-      // 翻轉卡帶
+      // 翻轉控制
       const flipper = document.getElementById('flipper');
       document.getElementById('btnFlipB').addEventListener('click', () => flipper.classList.add('flipped'));
       document.getElementById('btnFlipA').addEventListener('click', () => flipper.classList.remove('flipped'));
@@ -1461,7 +1460,7 @@
         iconVolMuted.style.display = val === 0 ? 'block' : 'none';
       });
 
-      // 換歌處理
+      // ══════════ 重置讀取鍵（載入按鈕）邏輯全面修復 ══════════
       const linkInput = document.getElementById('linkInput');
       const btnLoad = document.getElementById('btnLoad');
 
@@ -1469,26 +1468,43 @@
         const raw = linkInput.value.trim();
         const vid = parseYouTubeID(raw);
         if (!vid) {
-          alert('請貼上有效的 YouTube 網址！');
+          alert('請貼上有效的 YouTube 網址或影片 ID！');
           return;
         }
 
         localStore.set('yt_url', raw);
         localStore.set('yt_video_id', vid);
 
-        if (isReady && ytPlayer) {
+        // 如果播放器已準備好，直接載入並播放
+        if (isReady && ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
           try {
             ytPlayer.loadVideoById(vid);
             ytPlayer.playVideo();
           } catch(e) {
             ytPlayer.cueVideoById(vid);
           }
-          setTimeout(refreshTitle, 1500);
+        } else if (ytPlayer) {
+          // 容錯備援
+          try {
+            ytPlayer.cueVideoById(vid);
+          } catch(e) {}
         }
+
+        btnLoad.textContent = '載入中...';
+        setTimeout(() => {
+          refreshTitle();
+          btnLoad.textContent = '載入';
+        }, 1200);
       }
 
       btnLoad.addEventListener('click', doLoad);
-      linkInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLoad(); });
+      linkInput.addEventListener('keydown', (e) => { 
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          doLoad(); 
+        }
+      });
+
       if (urlVideo) linkInput.value = `https://youtu.be/${urlVideo}`;
       else if (localStore.get('yt_url')) linkInput.value = localStore.get('yt_url');
 
@@ -1539,7 +1555,7 @@
         });
       }, 250);
 
-      // ══════════ 外觀：卡帶 ══════════
+      // ══════════ 外觀：卡帶（修復圖片被覆蓋問題） ══════════
       const tapeStripe = document.getElementById('tapeStripe');
       const nativeColorPicker = document.getElementById('nativeColorPicker');
       const fileUploadInput = document.getElementById('fileUploadInput');
@@ -1564,14 +1580,13 @@
         localStore.set('cfg_bar_color', bColor);
       }
 
-      // 初始化還原底色與圖片（圖片擁有最高優先度，避免被顏色重置）
+      // 初始化順序：先還原顏色，最後強制還原圖片（確保圖片在最上層，不被純色蓋掉）
       if (localStore.get('cfg_accent')) applyCassetteAccent(localStore.get('cfg_accent'));
       if (localStore.get('cfg_case_color')) applyCaseColor(localStore.get('cfg_case_color'), localStore.get('cfg_bar_color') || '#11151c');
       
-      const savedTapeImg = urlImg || localStore.get('cfg_tape_img');
+      const savedTapeImg = localStore.get('cfg_tape_img');
       if (savedTapeImg) {
         tapeStripe.style.backgroundImage = `url("${savedTapeImg}")`;
-        localStore.set('cfg_tape_img', savedTapeImg);
       }
 
       document.querySelectorAll('.color-accent-btn').forEach(btn => {
@@ -1716,12 +1731,6 @@
         
         const base = window.location.origin + window.location.pathname;
         let permUrl = `${base}?id=${encodeURIComponent(pageId)}&v=${encodeURIComponent(curVid)}&style=${encodeURIComponent(curStyle)}`;
-
-        // 如果當前卡帶有外部網址圖片，一併帶上
-        const curImg = localStore.get('cfg_tape_img');
-        if (curImg && curImg.startsWith('http')) {
-          permUrl += `&img=${encodeURIComponent(curImg)}`;
-        }
 
         navigator.clipboard.writeText(permUrl).then(() => {
           btnCopyPermanentUrl.textContent = '✅ 已複製！請將網址貼回 Notion Embed 即可永久鎖定！';
