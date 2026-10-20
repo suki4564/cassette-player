@@ -660,7 +660,7 @@
     }
     .vol-btn { width: 24px; height: 24px; color: rgba(255, 255, 255, 0.85); }
     .vol-wrap { width: 56px; display: flex; align-items: center; }
-    
+
     #volSlider {
       -webkit-appearance: none;
       width: 100%;
@@ -768,7 +768,9 @@
       margin-bottom: 6px;
     }
 
-    .full-input, .link-row input[type="text"] {
+    .link-row { display: flex; gap: 8px; }
+    .link-row input[type="text"] {
+      flex: 1;
       background: rgba(0, 0, 0, 0.45);
       border: 1px solid rgba(255, 255, 255, 0.25);
       color: #ffffff;
@@ -778,9 +780,6 @@
       outline: none;
       width: 100%;
     }
-
-    .link-row { display: flex; gap: 8px; }
-    .link-row input[type="text"] { flex: 1; }
 
     .back-btn, #btnLoad, .btn-custom-action {
       background: rgba(255, 255, 255, 0.06);
@@ -877,7 +876,6 @@
     .switch input:checked + .track { background: rgba(255, 255, 255, 0.25); border-color: #fff; }
     .switch input:checked + .track::before { transform: translate(21px, -50%); }
 
-    /* 防丟失專用分享鈕 */
     .save-share-btn {
       width: 100%;
       background: #27ae60 !important;
@@ -1255,9 +1253,10 @@
       return (0.2126 * ((rgb >> 16) & 0xff) + 0.7152 * ((rgb >> 8) & 0xff) + 0.0722 * (rgb & 0xff)) > 160;
     }
 
-    // 優先讀取 URL 上的特定參數，徹底防 Notion 重置
+    // 優先讀取 URL 上的特定參數
     const urlVideo = params.get('v');
     const urlStyle = params.get('style');
+    const urlImg = params.get('img');
     const initialVideoId = urlVideo || localStore.get('yt_video_id') || '5qap5aO4i9A';
 
     let ytPlayer = null;
@@ -1328,6 +1327,39 @@
           document.getElementById('songTitle').textContent = d.title;
         }
       }
+    }
+
+    // 圖片微型壓縮工具函式（等比限制 600px，大小僅 50~70KB，徹底防止 localStorage 爆滿與重置）
+    function compressAndStore(file, storageKey, callback) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const maxDim = 600;
+          let w = img.width;
+          let h = img.height;
+
+          if (w > h && w > maxDim) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else if (h > maxDim) {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+
+          const compressed = canvas.toDataURL('image/jpeg', 0.85);
+          localStore.set(storageKey, compressed);
+          callback(compressed);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
     }
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -1532,9 +1564,15 @@
         localStore.set('cfg_bar_color', bColor);
       }
 
+      // 初始化還原底色與圖片（圖片擁有最高優先度，避免被顏色重置）
       if (localStore.get('cfg_accent')) applyCassetteAccent(localStore.get('cfg_accent'));
       if (localStore.get('cfg_case_color')) applyCaseColor(localStore.get('cfg_case_color'), localStore.get('cfg_bar_color') || '#11151c');
-      if (localStore.get('cfg_tape_img')) tapeStripe.style.backgroundImage = `url("${localStore.get('cfg_tape_img')}")`;
+      
+      const savedTapeImg = urlImg || localStore.get('cfg_tape_img');
+      if (savedTapeImg) {
+        tapeStripe.style.backgroundImage = `url("${savedTapeImg}")`;
+        localStore.set('cfg_tape_img', savedTapeImg);
+      }
 
       document.querySelectorAll('.color-accent-btn').forEach(btn => {
         btn.onclick = function(e) { e.preventDefault(); applyCassetteAccent(this.getAttribute('data-color'), true); };
@@ -1546,47 +1584,18 @@
       });
       document.getElementById('caseColorPicker').oninput = function(e) { applyCaseColor(e.target.value, '#11151c'); };
 
-     // 圖片壓縮輔助函式（防止超出 5MB 限制導致重整消失）
-      function compressAndSaveImage(file, storageKey, callback) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          const img = new Image();
-          img.onload = function() {
-            const canvas = document.createElement('canvas');
-            const maxDim = 500; // 等比縮放至最大 500px，大小約 50KB~80KB
-            let width = img.width;
-            let height = img.height;
-
-            if (width > height && width > maxDim) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else if (height > maxDim) {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-
-            // 轉為輕量 WebP/JPEG 格式
-            const compressedData = canvas.toDataURL('image/webp', 0.85);
-            localStore.set(storageKey, compressedData);
-            callback(compressedData);
-          };
-          img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-      }
-
-      // 卡帶圖片上傳（加入自動輕量化壓縮）
+      // 卡帶圖片上傳（加入自動壓縮，避免 localStorage 爆滿消失）
       fileUploadInput.onchange = function() {
         if (this.files && this.files[0]) {
-          compressAndSaveImage(this.files[0], 'cfg_tape_img', (dataUrl) => {
+          compressAndStore(this.files[0], 'cfg_tape_img', (dataUrl) => {
             tapeStripe.style.backgroundImage = `url("${dataUrl}")`;
           });
         }
+      };
+
+      document.getElementById('btnClearImg').onclick = function(e) {
+        e.preventDefault();
+        applyCassetteAccent(localStore.get('cfg_accent') || '#e51d24', true);
       };
 
       // ══════════ 外觀：黑膠 ══════════
@@ -1659,14 +1668,12 @@
       });
       document.getElementById('jacketColorPicker').oninput = function(e) { applyJacketColor(e.target.value, true); };
 
+      // 黑膠盤面圖片壓縮上傳
       document.getElementById('fileDiscBodyInput').onchange = function() {
         if (this.files && this.files[0]) {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            vinylDisc.style.backgroundImage = `url("${e.target.result}")`;
-            localStore.set('cfg_disc_body_img', e.target.result);
-          };
-          reader.readAsDataURL(this.files[0]);
+          compressAndStore(this.files[0], 'cfg_disc_body_img', (dataUrl) => {
+            vinylDisc.style.backgroundImage = `url("${dataUrl}")`;
+          });
         }
       };
       document.getElementById('btnClearDiscBodyImg').onclick = function(e) {
@@ -1674,14 +1681,12 @@
         applyDiscBodyColor(localStore.get('cfg_disc_body_color') || '#121212', true);
       };
 
+      // 圓標圖片壓縮上傳
       document.getElementById('fileLabelInput').onchange = function() {
         if (this.files && this.files[0]) {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            discLabel.style.backgroundImage = `url("${e.target.result}")`;
-            localStore.set('cfg_label_img', e.target.result);
-          };
-          reader.readAsDataURL(this.files[0]);
+          compressAndStore(this.files[0], 'cfg_label_img', (dataUrl) => {
+            discLabel.style.backgroundImage = `url("${dataUrl}")`;
+          });
         }
       };
       document.getElementById('btnClearLabelImg').onclick = function(e) {
@@ -1689,14 +1694,12 @@
         applyDiscLabelColor(localStore.get('cfg_label_color') || '#e67e22', true);
       };
 
+      // 封面圖片壓縮上傳
       document.getElementById('fileJacketInput').onchange = function() {
         if (this.files && this.files[0]) {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            vinylJacket.style.backgroundImage = `url("${e.target.result}")`;
-            localStore.set('cfg_jacket_img', e.target.result);
-          };
-          reader.readAsDataURL(this.files[0]);
+          compressAndStore(this.files[0], 'cfg_jacket_img', (dataUrl) => {
+            vinylJacket.style.backgroundImage = `url("${dataUrl}")`;
+          });
         }
       };
       document.getElementById('btnClearJacketImg').onclick = function(e) {
@@ -1711,9 +1714,14 @@
         const curStyle = currentStyle;
         const pageId = widgetId;
         
-        // 組合出含有專屬資訊的永久 URL
         const base = window.location.origin + window.location.pathname;
-        const permUrl = `${base}?id=${encodeURIComponent(pageId)}&v=${encodeURIComponent(curVid)}&style=${encodeURIComponent(curStyle)}`;
+        let permUrl = `${base}?id=${encodeURIComponent(pageId)}&v=${encodeURIComponent(curVid)}&style=${encodeURIComponent(curStyle)}`;
+
+        // 如果當前卡帶有外部網址圖片，一併帶上
+        const curImg = localStore.get('cfg_tape_img');
+        if (curImg && curImg.startsWith('http')) {
+          permUrl += `&img=${encodeURIComponent(curImg)}`;
+        }
 
         navigator.clipboard.writeText(permUrl).then(() => {
           btnCopyPermanentUrl.textContent = '✅ 已複製！請將網址貼回 Notion Embed 即可永久鎖定！';
