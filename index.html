@@ -1546,19 +1546,47 @@
       });
       document.getElementById('caseColorPicker').oninput = function(e) { applyCaseColor(e.target.value, '#11151c'); };
 
+     // 圖片壓縮輔助函式（防止超出 5MB 限制導致重整消失）
+      function compressAndSaveImage(file, storageKey, callback) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const img = new Image();
+          img.onload = function() {
+            const canvas = document.createElement('canvas');
+            const maxDim = 500; // 等比縮放至最大 500px，大小約 50KB~80KB
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height && width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // 轉為輕量 WebP/JPEG 格式
+            const compressedData = canvas.toDataURL('image/webp', 0.85);
+            localStore.set(storageKey, compressedData);
+            callback(compressedData);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      // 卡帶圖片上傳（加入自動輕量化壓縮）
       fileUploadInput.onchange = function() {
         if (this.files && this.files[0]) {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            tapeStripe.style.backgroundImage = `url("${e.target.result}")`;
-            localStore.set('cfg_tape_img', e.target.result);
-          };
-          reader.readAsDataURL(this.files[0]);
+          compressAndSaveImage(this.files[0], 'cfg_tape_img', (dataUrl) => {
+            tapeStripe.style.backgroundImage = `url("${dataUrl}")`;
+          });
         }
-      };
-      document.getElementById('btnClearImg').onclick = function(e) {
-        e.preventDefault();
-        applyCassetteAccent(localStore.get('cfg_accent') || '#e51d24', true);
       };
 
       // ══════════ 外觀：黑膠 ══════════
